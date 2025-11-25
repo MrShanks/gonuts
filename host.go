@@ -9,10 +9,19 @@ import (
 	"os"
 )
 
+type CommandFunc func(h *Host)
+
+type Command struct {
+	Name        string
+	Description string
+	Run         CommandFunc
+}
+
 type Host struct {
 	Name         string
 	Nics         map[string]Nic
-	RoutingTable []Route
+	RoutingTable []*Route
+	Commands     map[string]Command
 }
 
 func (h *Host) Send([]byte) {}
@@ -32,32 +41,65 @@ func (h *Host) Run() {
 			log.Fatal(err)
 		}
 
-		switch input := scanner.Text(); input {
-		case "route":
-			for _, r := range h.RoutingTable {
-				fmt.Printf("%v\n", r)
-			}
-		case "hostname":
-			fmt.Println(h.Name)
-		case "ip addr":
-			for name, nic := range h.Nics {
-				fmt.Printf("interface: %s, mac: %s\n", name, nic.MAC.String())
-			}
-		case "exit":
+		cmdName := scanner.Text()
+
+		if cmdName == "exit" {
 			os.Exit(0)
 		}
+
+		if cmd, exists := h.Commands[cmdName]; exists {
+			cmd.Run(h)
+		} else {
+			printHelp()
+		}
+	}
+}
+
+func printHelp() {
+	fmt.Printf("command not recognized, availables commands are:\n- route\n- hostname\n- ip addr\n- exit\n")
+}
+
+func printRoute(h *Host) {
+	for _, r := range h.RoutingTable {
+		fmt.Printf("%v\n", r)
+	}
+}
+
+func printHostname(h *Host) {
+	fmt.Println(h.Name)
+}
+
+func printAddresses(h *Host) {
+	for name, nic := range h.Nics {
+		fmt.Printf("interface: %s, mac: %s\n", name, nic.MAC.String())
+	}
+}
+
+func (h *Host) RegisterCommand(name, desc string, cmd CommandFunc) {
+	h.Commands[name] = Command{
+		Name:        name,
+		Description: desc,
+		Run:         cmd,
 	}
 }
 
 func NewHost(name string) *Host {
 	defaultRoute := NewRoute(net.ParseIP("0.0.0.0"), net.IPv4Mask(0, 0, 0, 0), net.ParseIP("192.168.1.1"), "eth0", 1)
-	routingTable := []Route{*defaultRoute}
+	routingTable := make([]*Route, 0)
+	routingTable = append(routingTable, defaultRoute)
 
-	return &Host{
+	h := &Host{
 		Name:         name,
 		Nics:         make(map[string]Nic),
 		RoutingTable: routingTable,
+		Commands:     make(map[string]Command),
 	}
+
+	h.RegisterCommand("route", "Show routing table", printRoute)
+	h.RegisterCommand("hostname", "Show host name", printHostname)
+	h.RegisterCommand("ip addr", "Manage network interfaces", printAddresses)
+
+	return h
 }
 
 func (h *Host) AddNic(name string) {
@@ -70,6 +112,15 @@ func (h *Host) AddNic(name string) {
 	h.Nics[name] = Nic{
 		MAC: mac,
 	}
+}
+
+func (h *Host) AddRoute(addr net.IP, mask net.IPMask, gw net.IP, nic string, priority int) {
+	if _, ok := h.Nics[nic]; !ok {
+		fmt.Printf("interface %s, does not exist\n", nic)
+		return
+	}
+	route := NewRoute(addr, mask, gw, nic, priority)
+	h.RoutingTable = append(h.RoutingTable, route)
 }
 
 func GenerateRandomMAC() (net.HardwareAddr, error) {
