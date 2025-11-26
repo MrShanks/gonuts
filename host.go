@@ -142,7 +142,8 @@ func printHostname(h *Host, args []string) {
 }
 
 func printAddresses(h *Host, args []string) {
-	if len(args) == 0 {
+	if len(args) < 1 {
+		fmt.Println("not enough arguments: ")
 		return
 	}
 	if args[0] == "addr" {
@@ -150,11 +151,15 @@ func printAddresses(h *Host, args []string) {
 			fmt.Printf("interface: %s, mac: %s\n", name, nic.MAC.String())
 		}
 	}
-	if args[0] == "r" {
-		findRoute()
+	if args[0] == "r" && args[1] == "g" {
+		findRoute(h, args[2])
 	}
 }
 
-func findRoute() {
-	fmt.Printf("Finding the best route!\n")
+func findRoute(h *Host, dest string) {
+	gw := h.RoutingTable[0].Gateway.String()
+	nic := h.Nics["eth0"].Name
+	hostIP := h.Nics["eth0"].IP.String()
+
+	fmt.Printf("%s via %s dev %s src %s uid 1000\n", dest, gw, nic, hostIP)
 }
